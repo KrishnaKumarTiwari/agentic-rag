@@ -15,7 +15,6 @@ Key differentiating features:
 
 > **Note**: For a detailed comparison between this Agentic approach and standard Pipeline RAG, please see the [Architecture Comparison Document](./ARCHITECTURE_COMPARISON.md).
 
-
 ## 2. System Context Diagram
 The system sits between Corporate Users and the Enterprise Data Ecosystem.
 
@@ -163,6 +162,9 @@ We treat the Agent like a Microservice using "Standard + LLM" observability.
     - *LLM Specific*: Token usage (Input/Output), Cost per Query, Average "Reasoning Steps" count.
 - **Logging**: Structured logs (JSON) sent to ELK (Elasticsearch/Logstash/Kibana) or Splunk.
     - *Audit Log*: Who asked what, when, and exactly which documents were cited (critical for Legal/Compliance).
+- **Cost Governance**:
+    - *Budgeting*: Hard usage limits and alerts per department/tenant.
+    - *Granularity*: Track cost per request and cost per feature.
 
 ## 7. Infrastructure & Scalability
 Reference architecture for High Availability (HA) and Scale.
@@ -170,7 +172,7 @@ Reference architecture for High Availability (HA) and Scale.
 ### 7.1. Cloud Deployment (AWS Reference)
 - **Compute**:
     - *Orchestrator/API*: EKS (Kubernetes) or ECS Fargate (Serverless Containers). Auto-scaling based on CPU/Memory/Queue Depth.
-    - *LLM Ops*: SageMaker Endpoints or vLLM on EC2 `g5.xlarge` instances for self-hosted models.
+    - *LLM Ops*: SageMaker Endpoints or vLLM on EC2 `g5.xlarge` instances for self-hosted models. Use **Spot Instances** for stateless inference nodes where possible to reduce costs. Use **Quantized Models** (AWQ/GPTQ) to lower VRAM requirements.
 - **Data Stores**:
     - *Vector DB*: Qdrant Managed Cloud or Self-hosted on EKS with SSD-backed nodes (NVMe). High replication factor (x3).
     - *State Store*: AWS RDS (Postgres) or ElastiCache (Redis) for Conversation History.
@@ -193,3 +195,28 @@ Reference architecture for High Availability (HA) and Scale.
 - **Evaluation**: Ragas / TruLens (for offline eval).
 - **Observability**: OpenTelemetry + Jaeger (Tracing), Prometheus (Metrics), ELK (Logs), Arize Phoenix (LLM Tracing).
 - **Infrastructure**: Kubernetes (EKS/GKE), AWS SageMaker / Bedrock.
+
+## 9. Cost Optimization Strategy
+To ensure the solution remains economically viable at enterprise scale, we adopt the following optimization playbook:
+
+### 9.1. Model Strategy Optimization
+- **Dynamic Model Routing**:
+    - Use a "Router" component to classify queries by complexity.
+    - *Simple Tasks* (e.g., Greetings, Fact Retrieval): Route to smaller, cheaper models (e.g., GPT-3.5, Claude 3 Haiku, or Llama 3 8B).
+    - *Complex Tasks* (e.g., Reasoning, Plan generation): Route to SOTA models (e.g., GPT-4o, Claude 3.5 Sonnet).
+- **Task-Based Selection**: Avoid "one size fits all". Use specialized small models for specific narrow tasks (e.g., PII detection, topic classification).
+
+### 9.2. Inference & Runtime Efficiency
+- **Response Caching (Semantic Cache)**:
+    - Implement a Semantic Cache (e.g., GPTCache, Redis Semantic Cache) to store `(Query Vector, Response)` pairs.
+    - High similarity hits (>0.95) return cached responses instantly, bypassing the LLM entirely (0 cost).
+- **Batch Inference**:
+    - For background jobs (e.g., nightly report generation), use batch APIs (50% discount) rather than real-time synchronous APIs.
+
+### 9.3. Prompt & Context Control
+- **Prompt Compression**:
+    - Use techniques like `LLMLingua` to compress the prompt context, removing redundant tokens while preserving information.
+- **Context Window Pruning**:
+    - Strict `top_k` limits on retrieval. Don't stuff 20 documents if 3 will do. Use Re-ranking to ensure the top 3 are high quality.
+- **Structured Outputs**:
+    - Use JSON mode to reduce "chatty" conversational filler in API responses, saving output tokens.
