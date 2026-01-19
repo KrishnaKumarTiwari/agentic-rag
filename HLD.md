@@ -13,8 +13,15 @@ Key differentiating features:
 - **Hybrid Search**: Semantic (Vector) + Keyword (BM25) + Re-ranking.
 - **Enterprise Guardrails**: PII redaction, topic adherence, and hallucination detection.
 
+> **Note**: For a detailed comparison between this Agentic approach and standard Pipeline RAG, please see the [Architecture Comparison Document](./ARCHITECTURE_COMPARISON.md).
+
+
 ## 2. System Context Diagram
 The system sits between Corporate Users and the Enterprise Data Ecosystem.
+
+![RAG Flow Animation](rag_flow_fixed_layout_1768806498365.webp)
+
+
 
 ```mermaid
 graph TD
@@ -84,15 +91,32 @@ Standardizes how the Agent accesses data. Instead of hardcoding SDKs for every D
 - **Hybrid Search**: Combines Dense Vector Search (KNN) for semantic meaning and Sparse Keywood Search (BM25) for exact matches (product codes, names).
 - **Re-ranking**: A Cross-Encoder model (e.g., Cohere Rerank, BGE-Reranker) rescores the top-N results to improve precision before sending to the LLM.
 
-### 3.5. Data Ingestion Pipeline
-- **Unstructured ETL**: Handles PDFs, PPTX, HTML.
-- **Steps**:
-    1.  **Extraction**: OCR for images, layout preservation for tables (Unstructured.io / Adobe API).
-    2.  **Chunking**: Semantic chunking (not just fixed tokens) based on headers or paragraphs.
-    3.  **Enrichment**: Adding metadata (Author, Date, Category) to chunks for filtering.
-    4.  **Embedding**: Asynchronous batch processing.
+### 3.5. Data Ingestion Pipeline (The "Knowledge Factory")
+- **Process**:
+    - **Source Connectors**: Periodic sync from Confluence, SharePoint, Jira, Google Drive.
+    - **Extraction (Unstructured ETL)**:
+        - *PDF/Images*: OCR using Tesseract or proprietary models (Adobe/AWS Textract) to extract text + layout.
+        - *Tables*: Flattening tables into Markdown or JSON representations to preserve semantic structure.
+    - **Transformation**:
+        - *Cleaning*: Remove headers, footers, legal disclaimers.
+        - *Metadata Extraction*: Use LLM to extract "Relevant Products", "Department", "Date" for pre-filtering.
+    - **Chunking Strategy**:
+        - *Parent-Child Indexing*: Split docs into huge "Parent" chunks (e.g., 2000 tokens) for context, but index small "Child" chunks (512 tokens) for search. Return the Parent to the LLM.
+        - *Semantic Chunking*: Break on topic shifts rather than fixed character counts.
+    - **Embedding**: Batch processing via GPU instances. Pushing vectors to Qdrant/Weaviate.
 
-### 3.6. Safety & Governance (Guardrails)
+### 3.6. Advanced Retrieval & Ranking Module
+- **Stage 1: Multi-Index Retrieval**:
+    - Query moves to 3 separate indices: `Keywords` (BM25 for exact product codes), `Vectors` (Dense for concept search), `Hypothetical Questions` (mapping user query to potential FAQ-style questions).
+- **Stage 2: Fusion**:
+    - Reciprocal Rank Fusion (RRF) combines the lists.
+- **Stage 3: Cohere Re-ranking**:
+    - A Cross-Encoder model scores the top 50 pairs of (User Query, Document Chunk) for deep semantic relevance.
+    - Filters out results with score < 0.7 (noise filtering).
+- **Stage 4: Context Assembly**:
+    - Top 5-10 chunks are assembled. Metadata is pre-pended (e.g., "Source: HR Policy 2024").
+
+### 3.7. Safety & Governance (Guardrails)
 - **Input Rails**: detailed prompt injection detection (e.g., Lakera, NeMo Guardrails).
 - **Output Rails**: PII redaction (Microsoft Presidio) and Hallucination checks (Self-Check GPT or citation verification).
 
@@ -114,9 +138,58 @@ Standardizes how the Agent accesses data. Instead of hardcoding SDKs for every D
     - Step 4: Ask User for confirmation to send email? (Human-in-the-loop).
     - Step 5: Call `mcp_outlook_server.send_email(...)`.
 
-## 5. Technology Stack Recommendations
+## 5. Evaluation & Continuous Improvement
+To ensure the system remains "Production-Ready," we implement rigorous evaluation:
+
+### 5.1. Offline Evaluation (Pre-Deployment)
+- **Frameworks**: Ragas (Retrieval Augmented Generation Assessment) or TruLens.
+- **Metrics**:
+    - *Context Recall*: Is the retrieved context actually relevant?
+    - *Faithfulness*: Is the answer derived *only* from the context (no hallucination)?
+    - *Answer Relevancy*: Does it answer the user's question?
+- **Golden Dataset**: A curated set of 200+ QA pairs verified by domain experts (SMEs). New code/prompts must pass score thresholds (e.g., > 0.85).
+
+### 5.2. Online Evaluation (Post-Deployment)
+- **User Feedback**: Thumbs up/down on every response. "Down" triggers a bug report for review.
+- **A/B Testing**: Serve distinct prompt versions to 50/50 traffic and measure "Copy/Paste rate" or "Thumbs Up rate."
+
+## 6. Observability & Monitoring
+We treat the Agent like a Microservice using "Standard + LLM" observability.
+
+- **Distributed Tracing**: OpenTelemetry instrumentation on the Orchestrator, MCP Hosts, and VectorDB.
+    - Tools: Jaeger, Honeycomb, or Arize Phoenix.
+- **Metrics (Prometheus/Grafana)**:
+    - *System*: P95/P99 Latency, Error Rate, RPS (Requests Per Second).
+    - *LLM Specific*: Token usage (Input/Output), Cost per Query, Average "Reasoning Steps" count.
+- **Logging**: Structured logs (JSON) sent to ELK (Elasticsearch/Logstash/Kibana) or Splunk.
+    - *Audit Log*: Who asked what, when, and exactly which documents were cited (critical for Legal/Compliance).
+
+## 7. Infrastructure & Scalability
+Reference architecture for High Availability (HA) and Scale.
+
+### 7.1. Cloud Deployment (AWS Reference)
+- **Compute**:
+    - *Orchestrator/API*: EKS (Kubernetes) or ECS Fargate (Serverless Containers). Auto-scaling based on CPU/Memory/Queue Depth.
+    - *LLM Ops*: SageMaker Endpoints or vLLM on EC2 `g5.xlarge` instances for self-hosted models.
+- **Data Stores**:
+    - *Vector DB*: Qdrant Managed Cloud or Self-hosted on EKS with SSD-backed nodes (NVMe). High replication factor (x3).
+    - *State Store*: AWS RDS (Postgres) or ElastiCache (Redis) for Conversation History.
+
+### 7.2. High Availability & Load Balancing
+- **Load Balancer (ALB)**: Application Load Balancer distributes Websockets/HTTP traffic across availability zones (Multi-AZ).
+- **Circuit Breakers**: If the primary LLM (e.g., GPT-4) times out or hits rate limits, automatically failover to a fallback model (e.g., Claude 3 Haiku or internal Llama 3) to prevent downtime.
+
+### 7.3. Performance Targets
+- **Throughput**: Support 500+ concurrent active chats.
+- **Latency (SLOs)**:
+    - *Time-to-First-Token (TTFT)*: < 800ms (Streaming).
+    - *Total End-to-End Latency*: < 5s for Simple RAG, < 15s for Complex Agentic Plans.
+
+## 8. Technology Stack Recommendations
 - **LLM**: GPT-4o / Claude 3.5 Sonnet (Capabilities), Llama 3 70B (Private).
 - **Orchestration**: LangGraph (Python) or customized LangChain.
 - **Vector DB**: Qdrant / Weaviate / Milvus (Production scale).
 - **Ingestion**: Unstructured.io / LlamaParse.
-- **Observability**: LangSmith / Arize Phoenix.
+- **Evaluation**: Ragas / TruLens (for offline eval).
+- **Observability**: OpenTelemetry + Jaeger (Tracing), Prometheus (Metrics), ELK (Logs), Arize Phoenix (LLM Tracing).
+- **Infrastructure**: Kubernetes (EKS/GKE), AWS SageMaker / Bedrock.

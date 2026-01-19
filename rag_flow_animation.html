@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8fafc;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        .container {
+            position: relative;
+            width: 1000px;
+            height: 940px;
+            /* Increased height to accommodate shift */
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+        }
+
+        /* Nodes */
+        .node {
+            position: absolute;
+            background: #fff;
+            border: 2px solid #334155;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 13px;
+            font-weight: bold;
+            color: #334155;
+            text-align: center;
+            z-index: 2;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .tech-label {
+            font-size: 10px;
+            color: #64748b;
+            font-weight: normal;
+            margin-top: 2px;
+            font-style: italic;
+        }
+
+        /* Shifted everything down by +30px */
+        .user {
+            top: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-color: #6366f1;
+            color: #6366f1;
+            width: 100px;
+        }
+
+        .frontend {
+            top: 110px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 130px;
+        }
+
+        .gateway {
+            top: 180px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 160px;
+        }
+
+        .orchestrator {
+            top: 290px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-color: #ec4899;
+            color: #ec4899;
+            width: 200px;
+            height: 60px;
+            font-size: 14px;
+        }
+
+        /* Agent Ecosystem (290px) */
+        .guard-in {
+            top: 290px;
+            left: 150px;
+            border-color: #ef4444;
+            color: #ef4444;
+            width: 100px;
+        }
+
+        .guard-out {
+            top: 290px;
+            right: 150px;
+            border-color: #ef4444;
+            color: #ef4444;
+            width: 100px;
+        }
+
+        .memory {
+            top: 220px;
+            right: 280px;
+            border-color: #f59e0b;
+            color: #f59e0b;
+            width: 110px;
+        }
+
+        .llm {
+            top: 220px;
+            left: 280px;
+            border-color: #10b981;
+            color: #10b981;
+            width: 120px;
+        }
+
+        /* MCP Layer (Top 380+30=410) */
+        .mcp-host {
+            top: 410px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 550px;
+            height: 180px;
+            border-style: dashed;
+            border-color: #94a3b8;
+            display: block;
+            pointer-events: none;
+            background: transparent;
+        }
+
+        .mcp-label {
+            position: absolute;
+            top: 5px;
+            left: 10px;
+            font-size: 11px;
+            color: #94a3b8;
+        }
+
+        .mcp-server {
+            width: 120px;
+            height: 50px;
+            font-size: 12px;
+        }
+
+        /* Know MCP 420+30=450 */
+        .know-mcp {
+            top: 450px;
+            left: 280px;
+            border-color: #8b5cf6;
+            color: #8b5cf6;
+        }
+
+        .sql-mcp {
+            top: 450px;
+            left: 500px;
+            border-color: #0ea5e9;
+            color: #0ea5e9;
+            transform: translateX(-50%);
+        }
+
+        .action-mcp {
+            top: 450px;
+            right: 280px;
+            border-color: #f97316;
+            color: #f97316;
+        }
+
+        /* Data Layer (520+30=550) */
+        .vectordb {
+            top: 550px;
+            left: 280px;
+            border-radius: 12px;
+            width: 100px;
+            height: 60px;
+            border-color: #8b5cf6;
+            color: #8b5cf6;
+        }
+
+        .dwh {
+            top: 550px;
+            left: 500px;
+            border-radius: 12px;
+            width: 100px;
+            height: 60px;
+            border-color: #0ea5e9;
+            color: #0ea5e9;
+            transform: translateX(-50%);
+        }
+
+        .app {
+            top: 550px;
+            right: 280px;
+            width: 100px;
+            height: 60px;
+            border-color: #f97316;
+            color: #f97316;
+        }
+
+        /* Connections */
+        svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        line,
+        path {
+            stroke: #cbd5e1;
+            stroke-width: 2;
+            fill: none;
+        }
+
+        .packet {
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            background-color: #ec4899;
+            border-radius: 50%;
+            z-index: 10;
+            box-shadow: 0 0 8px rgba(236, 72, 153, 0.6);
+            opacity: 0;
+        }
+
+        @keyframes rag-flow {
+
+            /* 1. Request In (+30px) */
+            0% {
+                top: 70px;
+                left: 500px;
+                opacity: 1;
+                transform: translate(-50%, -50%);
+            }
+
+            5% {
+                top: 140px;
+                left: 500px;
+                transform: translate(-50%, -50%);
+            }
+
+            10% {
+                top: 210px;
+                left: 500px;
+                transform: translate(-50%, -50%);
+            }
+
+            15% {
+                top: 320px;
+                left: 500px;
+                transform: translate(-50%, -50%);
+            }
+
+            /* At Orch */
+
+            /* 2. Guardrail Check (290+30=320) */
+            17% {
+                top: 320px;
+                left: 200px;
+                background-color: #ef4444;
+            }
+
+            20% {
+                top: 320px;
+                left: 500px;
+                background-color: #ec4899;
+            }
+
+            /* 3. Memory & planning (220+30=250) */
+            22% {
+                top: 250px;
+                left: 665px;
+                background-color: #f59e0b;
+            }
+
+            25% {
+                top: 320px;
+                left: 500px;
+                background-color: #ec4899;
+            }
+
+            27% {
+                top: 250px;
+                left: 340px;
+                background-color: #10b981;
+            }
+
+            30% {
+                top: 320px;
+                left: 500px;
+                background-color: #ec4899;
+            }
+
+            /* 4. Tools (MCP) (445+30=475) */
+            35% {
+                top: 475px;
+                left: 340px;
+                background-color: #8b5cf6;
+            }
+
+            40% {
+                top: 580px;
+                left: 340px;
+            }
+
+            /* To VectorDB (550+30=580) */
+            45% {
+                top: 475px;
+                left: 340px;
+            }
+
+            50% {
+                top: 320px;
+                left: 500px;
+                background-color: #ec4899;
+            }
+
+            /* 5. Synthesis */
+            55% {
+                top: 250px;
+                left: 340px;
+                background-color: #10b981;
+            }
+
+            60% {
+                top: 320px;
+                left: 500px;
+                background-color: #ec4899;
+            }
+
+            /* 6. Output Guard */
+            62% {
+                top: 320px;
+                left: 800px;
+                background-color: #ef4444;
+            }
+
+            65% {
+                top: 320px;
+                left: 500px;
+                background-color: #ec4899;
+            }
+
+            /* 7. Response */
+            70% {
+                top: 210px;
+                left: 500px;
+            }
+
+            75% {
+                top: 140px;
+                left: 500px;
+            }
+
+            80% {
+                top: 70px;
+                left: 500px;
+                opacity: 1;
+            }
+
+            100% {
+                top: 70px;
+                left: 500px;
+                opacity: 0;
+            }
+        }
+
+        .anim-dot {
+            animation: rag-flow 8s ease-in-out infinite;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <svg>
+            <!-- Spine -->
+            <line x1="500" y1="80" x2="500" y2="290" /> <!-- (50+30) to (260+30) -->
+
+            <!-- Orch Fanout (290+30=320) -->
+            <line x1="500" y1="320" x2="200" y2="320" /> <!-- Guard In -->
+            <line x1="500" y1="320" x2="800" y2="320" /> <!-- Guard Out -->
+            <line x1="500" y1="320" x2="340" y2="280" /> <!-- LLM (250+30) -->
+            <line x1="500" y1="320" x2="665" y2="280" /> <!-- Memory -->
+
+            <!-- MCP Fanout (320+30=350) -->
+            <line x1="500" y1="350" x2="340" y2="450" /> <!-- Know (420+30) -->
+            <line x1="500" y1="350" x2="500" y2="450" /> <!-- SQL -->
+            <line x1="500" y1="350" x2="665" y2="450" /> <!-- Action -->
+
+            <!-- Data Links (470+30=500) -->
+            <line x1="340" y1="500" x2="330" y2="550" /> <!-- (520+30) -->
+            <line x1="500" y1="500" x2="500" y2="550" />
+            <line x1="665" y1="500" x2="670" y2="550" />
+
+        </svg>
+
+        <div class="node user">User</div>
+        <div class="node frontend">Frontend<span class="tech-label">React / Next.js</span></div>
+        <div class="node gateway">API Gateway<span class="tech-label">Kong / AWS ALB</span></div>
+
+        <div class="node orchestrator">Agent Orchestrator
+            <span class="tech-label">LangGraph / AutoGen</span>
+        </div>
+
+        <div class="node guard-in">Input<br>Guard<span class="tech-label">Lakera</span></div>
+        <div class="node guard-out">Output<br>Guard<span class="tech-label">Presidio</span></div>
+
+        <div class="node memory">Memory<span class="tech-label">Postgres / Redis</span></div>
+        <div class="node llm">Models<span class="tech-label">Bedrock / SageMaker</span></div>
+
+        <div class="node mcp-host">
+            <span class="mcp-label">MCP Ecosystem</span>
+        </div>
+
+        <div class="node node mcp-server know-mcp">Knowledge<br>MCP<span class="tech-label">Python FastMCP</span></div>
+        <div class="node node mcp-server sql-mcp">SQL<br>MCP<span class="tech-label">Python FastMCP</span></div>
+        <div class="node node mcp-server action-mcp">Action<br>MCP<span class="tech-label">Python FastMCP</span></div>
+
+        <div class="node vectordb">Vector<br>DB<span class="tech-label">Qdrant / Milvus</span></div>
+        <div class="node dwh">Data<br>WH<span class="tech-label">Snowflake</span></div>
+        <div class="node app">Internal<br>API<span class="tech-label">REST / GraphQL</span></div>
+
+        <div class="packet anim-dot"></div>
+    </div>
+</body>
+
+</html>

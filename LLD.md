@@ -64,17 +64,28 @@ Each MCP Server (Knowledge, SQL, etc.) must implement the Model Context Protocol
 
 ## 3. Data Schema Design
 
-### 3.1. Vector Database Schema (Qdrant/Milvus)
+### 3.1. Vector Database Schema (Qdrant JSON)
 **Collection**: `corporate_knowledge`
+**Configuration**: `Cosine Distance`, `HNSW Index`
 
-| Field Name | Type | Description |
-| :--- | :--- | :--- |
-| `id` | UUID | Unique Chunk ID |
-| `vector` | Float32 Array | 1536-dim Embedding (e.g., OpenAI small) |
-| `payload.content` | Text | The actual chunk text |
-| `payload.source_url` | String | Link to original document (SharePoint/Web) |
-| `payload.metadata` | JSON | `{ "author": "HR", "date": "2025-01-01", "dept": "Legal" }` |
-| `payload.doc_id` | UUID | Parent Document ID |
+```json
+{
+  "id": "uuid-v4",
+  "vector": [0.012, -0.045, ...], // 1536-dim (OpenAI text-embedding-3-small)
+  "payload": {
+    "content": "Employees must submit travel expenses within 30 days...",
+    "source_url": "https://sharepoint.corp/policies/travel.pdf",
+    "chunk_index": 5,
+    "metadata": {
+      "title": "Global Travel Policy",
+      "author": "HR_dept",
+      "date_published": "2025-01-15",
+      "compliance_level": "confidential"
+    },
+    "parent_doc_id": "doc-uuid-888"
+  }
+}
+```
 
 ### 3.2. Relational Database (PostgreSQL)
 Used for conversation history (Memory) and User Feedback.
@@ -170,3 +181,50 @@ sequenceDiagram
 | `CHUNK_SIZE` | `512` | Token count per chunk |
 | `RERANK_ENABLED` | `true` | Enable cross-encoder reranking |
 | `LOG_LEVEL` | `INFO` | Application logging level |
+
+## 7. Observability Specifications
+
+### 7.1. OpenTelemetry Spans
+Structure for tracing an Agentic Request.
+
+**Parent Span**: `agent_execution`
+- `attributes.session_id`: "sess-123"
+- `attributes.user_id`: "u-456"
+
+**Child Spans**:
+1.  **`tool_call`**
+    - `name`: "mcp_knowledge_search"
+    - `attributes.tool.name`: "knowledge"
+    - `attributes.tool.args`: "{\"query\": \"...\"}"
+2.  **`llm_generation`**
+    - `name`: "gpt4o_completion"
+    - `attributes.llm.model`: "gpt-4o"
+    - `attributes.llm.token_count`: 154
+
+### 7.2. Metrics (Prometheus)
+- **`rag_latency_seconds`** (Histogram): Buckets [0.5, 1, 2.5, 5, 10, 30]
+- **`rag_requests_total`** (Counter): Labels: `status` (success/error), `user_tier`.
+- **`rag_tokens_consumed`** (Counter): Labels: `model_name`, `type` (prompt/completion).
+- **`rag_feedback_score`** (Gauge): Rolling average of user feedback.
+
+## 8. Evaluation Configuration (Ragas)
+
+Configuration for the Offline Evaluation Pipeline.
+
+```yaml
+# ragas_config.yaml
+metrics:
+  - context_precision
+  - context_recall
+  - faithfulness
+  - answer_relevancy
+
+evaluation_set:
+  path: "datasets/golden_qa_v1.json"
+  size: 200
+
+thresholds:
+  faithfulness: 0.9
+  answer_relevancy: 0.85
+```
+
