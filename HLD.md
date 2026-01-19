@@ -62,8 +62,8 @@ graph TD
         EmbedModel --> VectorDB
     end
 
-    LLM_Gateway --> OpenAI[External LLM (GPT-4o)]
-    LLM_Gateway --> SelfHosted[Internal LLM (vLLM/Llama)]
+    LLM_Gateway --> OpenAI["External LLM (GPT-4o)"]
+    LLM_Gateway --> SelfHosted["Internal LLM (vLLM/Llama)"]
 ```
 
 ## 3. Core Component Architecture
